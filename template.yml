@@ -1,0 +1,116 @@
+Parameters:
+  Username:
+    Description: Basic Auth 'Username' Credential
+    Type: String
+    Default: user
+  Password:
+    Description: Basic Auth 'Password' Credential
+    Type: String
+    Default: pass
+  DocumentationSlug:
+    Description: Generated documentation slug from Postman
+    Type: String
+Resources:
+  ApiGatewayRestApi:
+    Type: AWS::ApiGateway::RestApi
+    Properties:
+      ApiKeySourceType: HEADER
+      Description: An API Gateway with a Lambda Integration
+      EndpointConfiguration:
+        Types:
+          - EDGE
+      Name: lambda-api
+  ApiGatewayResource:
+    Type: AWS::ApiGateway::Resource
+    Properties:
+      ParentId: !GetAtt ApiGatewayRestApi.RootResourceId
+      PathPart: '{proxy+}'
+      RestApiId: !Ref ApiGatewayRestApi
+  ApiGatewayMethod:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      ApiKeyRequired: false
+      AuthorizationType: NONE
+      HttpMethod: ANY
+      Integration:
+        ConnectionType: INTERNET
+        Credentials: !GetAtt ApiGatewayIamRole.Arn
+        IntegrationHttpMethod: POST
+        PassthroughBehavior: WHEN_NO_MATCH
+        TimeoutInMillis: 29000
+        Type: AWS_PROXY
+        Uri: !Sub 'arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${LambdaFunction.Arn}/invocations'
+      OperationName: 'lambda'
+      ResourceId: !Ref ApiGatewayResource
+      RestApiId: !Ref ApiGatewayRestApi
+  ApiGatewayModel:
+    Type: AWS::ApiGateway::Model
+    Properties:
+      ContentType: 'application/json'
+      RestApiId: !Ref ApiGatewayRestApi
+      Schema: {}
+  ApiGatewayStage:
+    Type: AWS::ApiGateway::Stage
+    Properties:
+      DeploymentId: !Ref ApiGatewayDeployment
+      Description: Lambda API Stage v0
+      RestApiId: !Ref ApiGatewayRestApi
+      StageName: 'v0'
+  ApiGatewayDeployment:
+    Type: AWS::ApiGateway::Deployment
+    DependsOn: ApiGatewayMethod
+    Properties:
+      Description: Lambda API Deployment
+      RestApiId: !Ref ApiGatewayRestApi
+  ApiGatewayIamRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Sid: ''
+            Effect: 'Allow'
+            Principal:
+              Service:
+                - 'apigateway.amazonaws.com'
+            Action:
+              - 'sts:AssumeRole'
+      Path: '/'
+      Policies:
+        - PolicyName: LambdaAccess
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: 'Allow'
+                Action: 'lambda:*'
+                Resource: !GetAtt LambdaFunction.Arn
+  LambdaFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      Environment:
+        Variables:
+          USERNAME: !Ref Username
+          PASSWORD: !Ref Password
+          DOCUMENTATION_SLUG: !Ref DocumentationSlug
+      Code:
+
+      Description: AWS Lambda function
+      FunctionName: 'lambda-function'
+      Handler: index.handler
+      MemorySize: 256
+      Role: !GetAtt LambdaIamRole.Arn
+      Runtime: ruby2.7
+      Timeout: 60
+  LambdaIamRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: 'Allow'
+            Principal:
+              Service:
+                - 'lambda.amazonaws.com'
+            Action:
+              - 'sts:AssumeRole'
+      Path: '/'
